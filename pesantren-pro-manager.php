@@ -16,6 +16,8 @@ require_once PPM_DIR . 'includes/modul-santri.php';
 require_once PPM_DIR . 'includes/modul-keuangan.php';
 require_once PPM_DIR . 'includes/modul-ppdb.php';
 require_once PPM_DIR . 'includes/modul-import.php';
+require_once PPM_DIR . 'includes/modul-kartu.php';
+require_once PPM_DIR . 'includes/modul-laporan.php';
 
 // 2. Load CSS & Font untuk Dashboard Modern
 add_action('admin_enqueue_scripts', function($hook) {
