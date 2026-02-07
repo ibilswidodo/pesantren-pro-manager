@@ -40,13 +40,19 @@ function ppm_render_import_page() {
             <?php 
             // Logic Proses Import saat File Diunggah
             if (isset($_POST['start_import'])) {
-                ppm_process_csv_upload();
+                // Verifikasi keamanan nonce
+                if (isset($_POST['ppm_import_nonce_field']) && wp_verify_nonce($_POST['ppm_import_nonce_field'], 'ppm_import_action')) {
+                    ppm_process_csv_upload();
+                } else {
+                    echo "<div class='p-4 mb-6 bg-red-100 text-red-800 rounded-lg'>Sesi kadaluarsa, silakan coba lagi.</div>";
+                }
             }
             ?>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="p-6 border-2 border-dashed border-emerald-200 rounded-xl bg-emerald-50/30">
                     <form method="post" enctype="multipart/form-data">
+                        <?php wp_nonce_field('ppm_import_action', 'ppm_import_nonce_field'); ?>
                         <label class="block text-sm font-bold text-emerald-800 mb-4 text-center">Pilih File CSV Anda</label>
                         <input type="file" name="csv_file" accept=".csv" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 mb-6">
                         
