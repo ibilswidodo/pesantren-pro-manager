@@ -93,3 +93,132 @@ function ppm_save_santri_details($post_id) {
         }
     }
 }
+
+// --- TAHAP 2: FITUR IMPORT CSV ---
+
+// 1. Membuat Submenu Import di Menu Pesantren Pro
+add_action('admin_menu', 'ppm_register_import_submenu');
+function ppm_register_import_submenu() {
+    add_submenu_page(
+        'edit.php?post_type=santri',
+        'Import Santri',
+        'Import CSV',
+        'manage_options',
+        'ppm-import-santri',
+        'ppm_import_santri_page'
+    );
+}
+
+// 2. Fungsi Download Template CSV
+add_action('admin_init', 'ppm_handle_csv_download');
+function ppm_handle_csv_download() {
+    if (isset($_GET['action']) && $_GET['action'] === 'ppm_download_template') {
+        if (!current_user_can('manage_options')) return;
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename=template-santri.csv');
+        
+        $output = fopen('php://output', 'w');
+        // Header CSV
+        fputcsv($output, ['nama_lengkap', 'nis', 'wa_wali', 'kamar', 'kelas']);
+        // Contoh Data
+        fputcsv($output, ['Ahmad Zaki', '2024001', '628123456789', 'Gedung A-01', 'Wustho']);
+        
+        fclose($output);
+        exit;
+    }
+}
+
+// 3. Halaman Dashboard Import (UI Modern dengan Tailwind)
+function ppm_import_santri_page() {
+    ?>
+    <div class="wrap mt-10 mr-5 font-['Inter']">
+        <div class="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+            <h1 class="text-2xl font-bold text-emerald-700 mb-2">Import Data Santri</h1>
+            <p class="text-gray-600 mb-6">Unggah file CSV untuk memasukkan data santri secara massal ke sistem.</p>
+
+            <?php if (isset($_GET['imported'])) : ?>
+                <div class="bg-emerald-100 border-l-4 border-emerald-500 text-emerald-700 p-4 mb-6">
+                    Berhasil mengimport <?php echo intval($_GET['imported']); ?> data santri.
+                </div>
+            <?php endif; ?>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <form method="post" enctype="multipart/form-data" action="<?php echo admin_url('admin-post.php'); ?>">
+                        <input type="hidden" name="action" value="ppm_import_csv_logic">
+                        <?php wp_nonce_field('ppm_import_nonce', 'ppm_nonce'); ?>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Pilih File CSV</label>
+                            <input type="file" name="csv_file" accept=".csv" required class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition duration-200">
+                            Mulai Import Data
+                        </button>
+                    </form>
+                </div>
+
+                <div class="bg-gray-50 p-6 rounded-lg">
+                    <h3 class="font-bold text-gray-800 mb-2 text-lg">Instruksi Import:</h3>
+                    <ul class="list-disc list-inside text-gray-600 text-sm space-y-2">
+                        <li>Gunakan format file <strong>.CSV</strong></li>
+                        <li>Pastikan kolom sesuai dengan template (Nama, NIS, WA Wali, dll)</li>
+                        <li>NIS tidak boleh duplikat dengan data yang sudah ada.</li>
+                        <li>Format WA harus dimulai dengan kode negara (Contoh: 62812...)</li>
+                    </ul>
+                    <a href="?post_type=santri&page=ppm-import-santri&action=ppm_download_template" class="inline-block mt-4 text-emerald-600 font-semibold hover:underline">
+                        &darr; Download Template CSV
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+// 4. Logika Pemrosesan Data CSV
+add_action('admin_post_ppm_import_csv_logic', 'ppm_process_csv_import');
+function ppm_process_csv_import() {
+    if (!isset($_POST['ppm_nonce']) || !wp_verify_nonce($_POST['ppm_nonce'], 'ppm_import_nonce')) die('Security check failed');
+
+    if (!empty($_FILES['csv_file']['tmp_name'])) {
+        $file = fopen($_FILES['csv_file']['tmp_name'], 'r');
+        $header = fgetcsv($file); // Skip header row
+        
+        $count = 0;
+        while (($column = fgetcsv($file)) !== FALSE) {
+            $nama  = sanitize_text_field($column[0]);
+            $nis   = sanitize_text_field($column[1]);
+            $wa    = sanitize_text_field($column[2]);
+            $kamar = sanitize_text_field($column[3]);
+            $kelas = sanitize_text_field($column[4]);
+
+            // Cek duplikasi NIS
+            $existing = get_posts([
+                'post_type'  => 'santri',
+                'meta_key'   => '_ppm_nis',
+                'meta_value' => $nis
+            ]);
+
+            if (empty($existing) && !empty($nama)) {
+                $post_id = wp_insert_post([
+                    'post_title'   => $nama,
+                    'post_type'    => 'santri',
+                    'post_status'  => 'publish'
+                ]);
+
+                if ($post_id) {
+                    update_post_meta($post_id, '_ppm_nis', $nis);
+                    update_post_meta($post_id, '_ppm_wa_wali', $wa);
+                    update_post_meta($post_id, '_ppm_kamar', $kamar);
+                    update_post_meta($post_id, '_ppm_kelas', $kelas);
+                    $count++;
+                }
+            }
+        }
+        fclose($file);
+        wp_redirect(admin_url('edit.php?post_type=santri&page=ppm-import-santri&imported=' . $count));
+        exit;
+    }
+}
